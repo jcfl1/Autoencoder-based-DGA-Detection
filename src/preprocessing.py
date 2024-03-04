@@ -5,22 +5,25 @@ import math
 import json
 from nltk import ngrams
 
-# Preprocessing functions --------------------------------------------------------------------------------------------------------
 
-def remove_tld(domain, compiledTLDRegex):
+# Regex for removing TLDs, including compose TLDs as ".com.fr", ".gov.br", etc
+COMPILED_TLD_REGEX = re.compile(r'\.(?:edu|gov|com|co|org|ac|ne|net|mil|int)\.[^\.]+$')
+
+# Preprocessing functions --------------------------------------------------------------------------------------------------------
+def remove_tld(domain):
     # Returns input domain string after removing TLD
-    match_object = compiledTLDRegex.search(domain)
+    match_object = COMPILED_TLD_REGEX.search(domain)
     if match_object is not None:
         return domain[: match_object.start()]
 
     find = domain.rfind(".")
     if find == -1:
-        print("[WARNING] A domain without a TLD was found in raw data")
+        print(f"[WARNING] A domain without a TLD was found in raw data ({domain})")
         return domain
     return domain[:find]
 
 
-def get_ngram_frequencies(top_domains, compiledTLDRegex, n_list=[3, 4, 5, 6, 7], top_n_domains=100000):
+def get_ngram_frequencies(top_domains, n_list=[3, 4, 5, 6, 7], top_n_domains=100000):
     """
     Returns a dict counting ngram frequencies in "top_domains" pandas Series Object
 
@@ -28,8 +31,6 @@ def get_ngram_frequencies(top_domains, compiledTLDRegex, n_list=[3, 4, 5, 6, 7],
     ----------
     top_domains : Pandas Series
         Series containing domains sorted by popularity
-    compiledTLDRegex : re.Pattern
-        A compiled regex to be used to remove TLD from queries
     n_list: List of ints
         A list containing "n"s from ngrams to be extracted
     top_n_domains: Int
@@ -37,7 +38,7 @@ def get_ngram_frequencies(top_domains, compiledTLDRegex, n_list=[3, 4, 5, 6, 7],
     """
 
     top_domains = top_domains[:top_n_domains]
-    domains_without_tld_list = top_domains.apply(lambda domain: remove_tld(domain, compiledTLDRegex))
+    domains_without_tld_list = top_domains.apply(lambda domain: remove_tld(domain))
 
     ngram_frequencies = {}
     for n in n_list:
@@ -66,9 +67,9 @@ def weight_ngram(ngram_str, dict_ngram_frequencies):
     return math.log2((dict_ngram_frequencies[ngram_key][ngram_str]) / (len(ngram_str)))
 
 
-def reputation_value(domain, dict_ngram_frequencies, compiledTLDRegex):
+def reputation_value(domain, dict_ngram_frequencies):
     # Retuns reputation value for a entire domain string (after removing TLD)
-    domain = remove_tld(domain, compiledTLDRegex)
+    domain = remove_tld(domain)
     if domain == "":
         print("[WARNING] A domain without a TLD was found in raw data while trying to calculate reputation value")
         return None
@@ -175,7 +176,7 @@ def extract_ratios_frequencies_and_lengths(fqdn):
     )
 
 
-def extract_features(df, queryColumnLower, compiledTLDRegex, majesticNgramFrequencies, shouldRemoveTLD=False):
+def extract_features(df, domain_col, ngram_frequencies, should_remove_TLD=False):
     """
     Returns the original dataframe with new columns for linguistic features.
 
@@ -183,23 +184,25 @@ def extract_features(df, queryColumnLower, compiledTLDRegex, majesticNgramFreque
     ----------
     df : Dataframe
         Input dataframe
-    queryColumnLower : String
+    domain_col : String
         A string representing the name of the column from the input dataframe containing the lowercase query
-    compiledTLDRegex : re.Pattern
-        A compiled regex to be used to remove TLD from queries
-    majesticNgramFrequencies: Dict
-        Dict containing the frequencies of ngrams using obtained using Majestic top domains.
-    shouldRemoveTLD : Bool
+    top_domains: List like object
+        List of domains to extract n-gram reputation value features
+    should_remove_TLD : Bool
         Set if you want to obtain linguistic features after removing TLD
+    n_list: List of ints
+        A list containing "n"s from ngrams to be extracted
+    top_n_domains: Int
+        Number of domains to be used to count ngram frequencies
     """
 
     new_df = pd.DataFrame()
 
-    if shouldRemoveTLD:
-        df[f"wo_tld_{queryColumnLower}"] = df.apply(lambda df_aux: remove_tld(df_aux[queryColumnLower], compiledTLDRegex), axis=1)
-        domains = df[f"wo_tld_{queryColumnLower}"]
+    if should_remove_TLD:
+        df[f"wo_tld_{domain_col}"] = df.apply(lambda df_aux: remove_tld(df_aux[domain_col]), axis=1)
+        domains = df[f"wo_tld_{domain_col}"]
     else:
-        domains = df[queryColumnLower]
+        domains = df[domain_col]
 
     # Obtaining domain_len, max_len_label, max_len_continuous_int, max_len_continuous_string, special_freq,
     # special_ratio, int_freq, int_ratio, vowel_freq, vowel_ratio
@@ -223,12 +226,11 @@ def extract_features(df, queryColumnLower, compiledTLDRegex, majesticNgramFreque
     new_df = pd.concat([new_df, df_string_char_frequencies], axis=1)
 
     # Adding prefix to features obtained without TLD
-    if shouldRemoveTLD:
+    if should_remove_TLD:
         new_df = new_df.add_prefix("wo_tld_")
 
-    # Obtaining reputation value using majestic million domains
-    new_df["reputation_value_majestic"] = df.apply(
-        lambda df_aux: reputation_value(df_aux[queryColumnLower], majesticNgramFrequencies, compiledTLDRegex), axis=1
+    new_df["reputation_value"] = df.apply(
+        lambda df_aux: reputation_value(df_aux[domain_col], ngram_frequencies), axis=1
     )
 
     df = pd.concat([df, new_df], axis=1)
