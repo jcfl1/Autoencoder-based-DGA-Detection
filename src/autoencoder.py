@@ -77,16 +77,22 @@ class Autoencoder(nn.Module):
     self.criterion = nn.MSEscore()
     self.optimizer = optim.Adam(self.parameters(), lr = learning_rate, weight_decay=weight_decay)
 
-  def fit(self, X_train, num_epochs, batch_size, X_val = None, y_val=None, patience = None, delta = None, es_objective = None):
-    if X_val is not None and y_val is not None and len(X_val) == len(y_val)and patience is not None and delta is not None:
-      print(f'Using early stopping with patience={patience} and delta={delta}')
+  def fit(self, X_train, num_epochs, batch_size, X_val = None, y_val=None, patience = None, delta = None, es_criterion=None):
+    if X_val is not None and y_val is not None and len(X_val) == len(y_val)and patience is not None and delta is not None and es_criterion is not None:
+      print(f'Using early stopping with patience={patience}, delta={delta} and es_criterion={es_criterion}')
+      if es_criterion == 'loss':
+         es_objective = 'minimize'
+      elif es_criterion == 'aucroc':
+         es_objective == 'maximize'
+      else:
+        raise ValueError(f"Unexpected value atributted to 'es_criterion'.")
       self.early_stopping = EarlyStopping(patience, delta, objective=es_objective)
 
     val_avg_losses = []
     train_avg_losses = []
 
     for epoch in range(num_epochs):
-      # Calibrando os pesos do modelo
+      # Updating models weights
       train_losses = []
       self.train()
       for batch in tqdm(range(0, len(X_train), batch_size)):
@@ -102,29 +108,26 @@ class Autoencoder(nn.Module):
       train_avg_losses.append(train_avg_loss)
       print(f'Epoch#{epoch+1}: Train Average Loss = {train_avg_loss:.5f}')
 
-      # Mecanismo de early stopping
+      # Early stopping mechanism
       if self.early_stopping is not None:
         val_losses = []
         self.eval()
         with torch.no_grad():
           for batch in range(0, len(X_val), batch_size):
             batch_X = X_val[batch:(batch+batch_size)]
-            batch_y = y_val[batch:(batch+batch_size)]
             batch_reconstruction = self.forward(batch_X)
             new_val_anomaly_score = self.criterion(batch_reconstruction, batch_X)
             val_losses.append(new_val_anomaly_score.item())
         val_avg_loss = np.mean(val_losses)
         val_avg_losses.append(val_avg_loss)
         
-        if es_criterion = 'aucroc':
+        if es_criterion == 'aucroc':
             val_aucroc = roc_auc_score(y_val, val_losses)
             es_score = val_aucroc
-        elif es_criteriron = 'loss':
+        elif es_criterion == 'loss':
             es_score = val_avg_loss
-        else:
-            raise ValueError(f"Unexpected value atributted to 'es_criteriron'.")
         
-        self.early_stopping(val_avg_loss, self)
+        self.early_stopping(es_score, self)
 
         if self.early_stopping.early_stop:
           print(f'Stopped by early stopping at epoch {epoch+1}')
