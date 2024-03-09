@@ -162,3 +162,5 @@ cython_debug/
 # Extras
 rasc.*
 data/
+experiments/
+checkpoint.pt

@@ -1,48 +1,10 @@
-import pandas as pd
 import numpy as np
-from math import ceil
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from sklearn.metrics import roc_auc_score
 from tqdm import tqdm
-
-# Early Stopping -----------------------------------------------------------------------------------------------
-class EarlyStopping:
-  def __init__(self, patience=7, delta=0, objective='minimize', verbose=True, path='checkpoint.pt'):
-    self.patience = patience
-    self.delta = delta
-    self.verbose = verbose
-    self.counter = 0
-    self.early_stop = False
-    self.objective = objective
-    self.path = path
-
-    if self.objective == 'minimize':
-        self.compare_funct = lambda new_score,best_score: new_score < best_score - self.delta
-        self.best_score = np.Inf
-    elif self.objective == 'maximize':
-        self.compare_funct = lambda new_score,best_score: new_score > best_score + self.delta
-        self.best_score = -np.Inf
-    else:
-        raise ValueError(f"Unexpected value atributted to 'objective'.")
-
-  def __call__(self, new_val_score, model):
-    if self.compare_funct(new_val_score, self.best_score):     # If comparison between new_val_score and best_score is aligned with our objetive, then lets save current checkpoint and update best_score
-        self.save_checkpoint(new_val_score, model)
-        self.counter = 0
-    else:                                                                   # If comparison between new_val_score and best_score is NOT aligned with our objetive, lets increment patient counter
-        self.counter += 1
-        print(f'EarlyStopping counter: {self.counter} out of {self.patience}. Current validation score: {new_val_score:.5f}')
-        if self.counter > self.patience:
-            self.early_stop = True
-
-  def save_checkpoint(self, new_val_score, model):
-    if self.verbose:
-        print(f'Validation score improved ({self.best_score:.5f} --> {new_val_score:.5f}).  Saving model ...')
-    torch.save(model, self.path)
-    self.best_score = new_val_score
-
+from early_stopping import EarlyStopping
 
 # Autoencoder -----------------------------------------------------------------------------------------------
 class Autoencoder(nn.Module):
@@ -138,8 +100,9 @@ class Autoencoder(nn.Module):
         if early_stopping.early_stop:
           print(f'Stopped by early stopping at epoch {epoch+1}')
           break
-
+    
+    model = self
     if early_stopping is not None:
-      checkpoint_model = torch.load('checkpoint.pt')
-    checkpoint_model.eval()
-    return checkpoint_model, train_avg_losses, val_avg_losses
+      model = torch.load('checkpoint.pt')
+    model.eval()
+    return model, train_avg_losses, val_avg_losses

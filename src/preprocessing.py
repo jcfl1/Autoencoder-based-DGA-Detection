@@ -237,3 +237,27 @@ def extract_features(df, domain_col, ngram_frequencies, should_remove_TLD=False)
 
     return df
 
+def extract_character_level_representation(df, domain_col, max_len=256, should_remove_TLD=True, 
+                                           valid_chars='abcdefghijklmnopqrstuvwxyz0123456789.-'):
+    
+    if should_remove_TLD:
+        df[f"wo_tld_{domain_col}"] = df.apply(lambda df_aux: remove_tld(df_aux[domain_col]), axis=1)
+        domains = df[f"wo_tld_{domain_col}"]
+    else:
+        domains = df[domain_col]
+
+    valid_chars_dict = {c:i+1 for i,c in enumerate(valid_chars)}
+    
+    numeric_domain_representation_list = []
+    for domain in domains:
+        domain = domain[-max_len:]
+        numeric_domain_representation = [valid_chars_dict[c] if c in valid_chars else len(valid_chars)+1 for c in domain]
+        # Padding
+        num_zeros_to_pad = max_len - len(numeric_domain_representation)
+        numeric_domain_representation = np.pad(
+            numeric_domain_representation, pad_width=(num_zeros_to_pad, 0), mode='constant', constant_values=0
+            )
+        numeric_domain_representation_list.append(numeric_domain_representation)
+    numeric_domain_representation_array = np.array(numeric_domain_representation_list, dtype=np.int8)
+    return numeric_domain_representation_array
+
