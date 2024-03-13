@@ -160,7 +160,7 @@ cython_debug/
 #.idea/
 
 # Extras
-rasc.*
+rasc*
 data/
 experiments/
 checkpoint.pt
